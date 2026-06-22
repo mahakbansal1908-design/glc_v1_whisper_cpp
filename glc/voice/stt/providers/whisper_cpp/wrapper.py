@@ -20,31 +20,18 @@ MODEL_DIR = Path(os.path.expanduser(os.getenv("GLC_WHISPER_MODEL_DIR", "~/.glc/m
 MODEL_FILE = MODEL_DIR / "ggml-base.bin"
 
 
-def vad_model_path() -> Path:
-    """Resolve the Silero VAD model path (read per call so it is testable)."""
-    return Path(
-        os.path.expanduser(os.getenv("GLC_WHISPER_VAD_MODEL", str(MODEL_DIR / "ggml-silero-v6.2.0.bin")))
-    )
+DEFAULT_VAD_THRESHOLD = 0.5
 
 
 def _build_argv(cli: str, model: Path, audio_path: Path, vad: bool) -> list[str]:
     """Build the whisper-cli argv, appending native VAD flags when asked.
 
-    VAD is only added if its model is actually present; a missing model
-    warns and degrades to a plain run instead of failing.
+    VAD is threshold-based (`--vad -vt N`) rather than model-based: no
+    separate Silero model file is required, just a speech-probability cut.
     """
     argv = [cli, "-m", str(model), "-f", str(audio_path), "-oj"]
     if vad:
-        vm = vad_model_path()
-        if vm.exists():
-            argv += ["--vad", "-vm", str(vm)]
-        else:
-            warnings.warn(
-                f"VAD requested but Silero model not found at {vm}; "
-                "running without --vad. Fetch it via "
-                "`./models/download-vad-model.sh silero-v6.2.0`.",
-                stacklevel=2,
-            )
+        argv += ["--vad", "-vt", f"{DEFAULT_VAD_THRESHOLD}"]
     return argv
 
 
