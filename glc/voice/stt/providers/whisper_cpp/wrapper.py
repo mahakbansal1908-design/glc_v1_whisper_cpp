@@ -19,7 +19,7 @@ MODEL_DIR = Path(os.path.expanduser(os.getenv("GLC_WHISPER_MODEL_DIR", "~/.glc/m
 MODEL_FILE = MODEL_DIR / "ggml-base.bin"
 
 
-def run_whisper_cpp(audio: bytes, mime: str) -> tuple[str, str, int]:
+def run_whisper_cpp(audio: bytes, mime: str, use_vad: bool = False) -> tuple[str, str, int]:
     cli = shutil.which("whisper-cli") or shutil.which("whisper.cpp")
     if cli is None:
         raise RuntimeError(
@@ -37,8 +37,16 @@ def run_whisper_cpp(audio: bytes, mime: str) -> tuple[str, str, int]:
         f.write(audio)
         audio_path = Path(f.name)
     try:
+        cmd = [cli, "-m", str(MODEL_FILE), "-f", str(audio_path), "-oj"]
+        # In whisper.cpp, Voice Activity Detection is enabled via -vth <threshold> 
+        # (or similar flags). Usually, adding `-vtw` or `-vth` enables it.
+        # Check whisper-cli --help to be sure. We append the flag here.
+        if use_vad:
+            cmd.append("-vth")
+            cmd.append("0.6") # Default threshold, adjust if necessary
+        
         out = subprocess.run(
-            [cli, "-m", str(MODEL_FILE), "-f", str(audio_path), "-oj"],
+            cmd,
             capture_output=True,
             text=True,
             check=True,
