@@ -7,6 +7,7 @@ mock-API fake in tests/voice/stt/mocks/whisper_cpp_mock.py.
 import array
 import asyncio
 import io
+import re
 import subprocess
 import wave
 
@@ -19,6 +20,19 @@ BYTES_PER_SAMPLE = 2
 SILENCE_MAX_AMPLITUDE = 32
 # Inputs longer than this are VAD-trimmed (slot README: ">~30s").
 VAD_LENGTH_THRESHOLD_S = 30.0
+# Peak amplitude range for feeble-voice normalization: (SILENCE_MAX_AMPLITUDE, this].
+FEEBLE_VOICE_MAX_AMPLITUDE = 2048   # 6.25% of full scale
+FEEBLE_VOICE_TARGET_AMPLITUDE = 6553  # ~20% of full scale (boost target)
+
+# Whisper annotates non-speech events in brackets/parens — strip them so the
+# caller only sees actual speech text.
+_NOISE_TAG = re.compile(
+    r'\[[^\]]*\]'   # [Music], [Noise], [Background noise], [Traffic noise], …
+    r'|\([^)]*\)'   # (noise), (background music), …
+    r'|[♪♫♬]'      # music-note symbols
+    r'|\*[^*]+\*'   # *clapping*, *applause*, …
+)
+_PUNCT_ONLY = re.compile(r'^[\s.,!?;:\'"/_~`^*\-–—\xb7•]+$')
 
 
 def _pcm_payload(audio: bytes) -> bytes:
@@ -87,6 +101,60 @@ def _should_use_vad(audio: bytes) -> bool:
     return _duration_s(audio) > VAD_LENGTH_THRESHOLD_S
 
 
+def _normalize_feeble(audio: bytes) -> bytes:
+    """Boost quiet speech before handing off to whisper.
+
+    Whisper needs a reasonable signal level to detect feeble voices. If the
+    peak amplitude is above the silence floor but still very low, scale the
+    samples up to ~20% of full scale (gain capped at 10× to avoid artefacts).
+    Returns the original bytes unchanged when audio is already loud enough or
+    when amplitude is zero (silence is handled before this is called).
+    """
+    pcm = _pcm_payload(audio)
+    if not pcm:
+        return audio
+    n = len(pcm) - len(pcm) % BYTES_PER_SAMPLE
+    if n == 0:
+        return audio
+    samples = array.array("h")
+    samples.frombytes(pcm[:n])
+    peak = max((abs(s) for s in samples), default=0)
+    if peak == 0 or peak > FEEBLE_VOICE_MAX_AMPLITUDE:
+        return audio  # already loud enough (or truly silent — caller handles that)
+    gain = min(FEEBLE_VOICE_TARGET_AMPLITUDE / peak, 10.0)
+    scaled = array.array("h", (max(-32768, min(32767, int(s * gain))) for s in samples))
+    # Preserve WAV container parameters when present.
+    nchannels, sampwidth, framerate = 1, 2, SAMPLE_RATE
+    if audio[:4] == b"RIFF":
+        try:
+            with wave.open(io.BytesIO(audio), "rb") as w:
+                p = w.getparams()
+                nchannels, sampwidth, framerate = p.nchannels, p.sampwidth, p.framerate
+        except (wave.Error, EOFError):
+            pass
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(nchannels)
+        w.setsampwidth(sampwidth)
+        w.setframerate(framerate)
+        w.writeframes(scaled.tobytes())
+    return buf.getvalue()
+
+
+def _strip_noise_tags(text: str) -> str:
+    """Remove whisper's non-speech annotations from the transcript.
+
+    Whisper adds bracket/parenthesis tags like [Music], [Noise], [Background
+    noise], (applause), ♪ etc. to mark non-speech events. For noisy-speech
+    audio the caller wants only the spoken words; these markers are noise.
+    If stripping leaves only punctuation or whitespace the result is empty.
+    """
+    cleaned = _NOISE_TAG.sub("", text).strip()
+    if cleaned and _PUNCT_ONLY.fullmatch(cleaned):
+        return ""
+    return cleaned
+
+
 class Provider(STTProvider):
     name = "whisper_cpp"
 
@@ -106,11 +174,15 @@ class Provider(STTProvider):
         if _is_silent(audio):
             return self._empty_result()
 
+        # Boost feeble-voice audio before whisper sees it so quiet speech
+        # isn't missed. No-op when audio is already loud enough.
+        audio = _normalize_feeble(audio)
+
         mock = self.config.get("mock")
         if mock is not None:
             r = await mock.transcribe(audio, mime)
             return TranscribeResult(
-                text=r.text,
+                text=_strip_noise_tags(r.text),
                 language=r.language,
                 duration_ms=r.duration_ms,
                 provider=self.name,
@@ -137,7 +209,7 @@ class Provider(STTProvider):
             # callers see one error type regardless of provider (IF-3).
             raise STTError(f"whisper_cpp transcription failed: {e}") from e
         return TranscribeResult(
-            text=text,
+            text=_strip_noise_tags(text),
             language=language,
             duration_ms=duration_ms,
             provider=self.name,
