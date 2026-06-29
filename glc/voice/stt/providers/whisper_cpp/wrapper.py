@@ -53,11 +53,15 @@ def run_whisper_cpp(audio: bytes, mime: str, use_vad: bool = False) -> tuple[str
     try:
         cmd = [
             cli,
-            "-m", str(MODEL_FILE),
-            "-f", str(audio_path),
+            "-m",
+            str(MODEL_FILE),
+            "-f",
+            str(audio_path),
             "-oj",
-            "-t",  str(WHISPER_THREADS),    # use all cores → linear speedup
-            "-bs", str(WHISPER_BEAM_SIZE),  # beam=2 ≈ 2× faster vs default 5
+            "-t",
+            str(WHISPER_THREADS),  # use all cores → linear speedup
+            "-bs",
+            str(WHISPER_BEAM_SIZE),  # beam=2 ≈ 2× faster vs default 5
         ]
         # For long inputs, raise the no-speech threshold so whisper drops
         # no-speech segments more aggressively. `-nth` is model-free; the

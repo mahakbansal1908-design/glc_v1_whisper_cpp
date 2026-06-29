@@ -21,16 +21,16 @@ SILENCE_MAX_AMPLITUDE = 32
 # Inputs longer than this are VAD-trimmed (slot README: ">~30s").
 VAD_LENGTH_THRESHOLD_S = 30.0
 # Peak amplitude range for feeble-voice normalization: (SILENCE_MAX_AMPLITUDE, this].
-FEEBLE_VOICE_MAX_AMPLITUDE = 2048   # 6.25% of full scale
+FEEBLE_VOICE_MAX_AMPLITUDE = 2048  # 6.25% of full scale
 FEEBLE_VOICE_TARGET_AMPLITUDE = 6553  # ~20% of full scale (boost target)
 
 # Whisper annotates non-speech events in brackets/parens — strip them so the
 # caller only sees actual speech text.
 _NOISE_TAG = re.compile(
-    r'\[[^\]]*\]'   # [Music], [Noise], [Background noise], [Traffic noise], …
-    r'|\([^)]*\)'   # (noise), (background music), …
-    r'|[♪♫♬]'      # music-note symbols
-    r'|\*[^*]+\*'   # *clapping*, *applause*, …
+    r"\[[^\]]*\]"  # [Music], [Noise], [Background noise], [Traffic noise], …
+    r"|\([^)]*\)"  # (noise), (background music), …
+    r"|[♪♫♬]"  # music-note symbols
+    r"|\*[^*]+\*"  # *clapping*, *applause*, …
 )
 _PUNCT_ONLY = re.compile(r'^[\s.,!?;:\'"/_~`^*\-–—\xb7•]+$')
 
