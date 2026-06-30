@@ -101,7 +101,7 @@ def _duration_s(audio: bytes) -> float:
 
 def _should_use_vad(audio: bytes) -> bool:
     """VAD-trim only long inputs, where internal silence inflates latency.
-    
+
     Disabled by default — _trim_silence_wav in wrapper.py already
     removes silence BEFORE whisper-cli runs, which is more effective than
     whisper's built-in VAD. The -vth flag causes whisper-cli to skip writing
