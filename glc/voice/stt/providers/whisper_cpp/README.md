@@ -148,10 +148,10 @@ Both under the 1s voice budget.
 
 | Feature | Reason |
 |---------|---------|
-| `-bs` (beam size) flag | Not tested, whisper-cli default is fine |
-| `no_speech_prob > 0.7` music detection | Not tested, whisper already returns empty for non-speech |
+| `-bs` (beam size) flag |  whisper-cli default is fine |
+| `no_speech_prob > 0.7` music detection |  whisper already returns empty for non-speech |
 | `_amplify_wav()` (fixed 1.5× gain) | Replaced by `_normalize_feeble()` (dynamic gain) |
-| `_is_music_likely()` (ZCR heuristic) | Not tested, adds ~700ms latency, not called by default |
+| `_is_music_likely()` (ZCR heuristic) |  adds ~700ms latency, not called by default |
 
 ## Files
 
