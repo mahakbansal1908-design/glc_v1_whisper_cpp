@@ -206,7 +206,9 @@ def _parse_stderr_transcript(stderr: str) -> tuple[str, int]:
     text_parts: list[str] = []
     last_end_ms = 0
     # Match: [HH:MM:SS.mmm --> HH:MM:SS.mmm]   text
-    pattern = re.compile(r"\[(\d{2}):(\d{2}):(\d{2})\.(\d{3})\]\s+-->\s+(\d{2}):(\d{2}):(\d{2})\.(\d{3})\]\s+(.*)")
+    pattern = re.compile(
+        r"\[(\d{2}):(\d{2}):(\d{2})\.(\d{3})\]\s+-->\s+(\d{2}):(\d{2}):(\d{2})\.(\d{3})\]\s+(.*)"
+    )
 
     for line in stderr.splitlines():
         m = pattern.match(line.strip())
@@ -214,12 +216,7 @@ def _parse_stderr_transcript(stderr: str) -> tuple[str, int]:
             h2, m2, s2, cs2, txt = m.group(5), m.group(6), m.group(7), m.group(8), m.group(9)
             text_parts.append(txt.strip())
             # Convert end timestamp to milliseconds
-            end_ms = (
-                int(h2) * 3600_000
-                + int(m2) * 60_000
-                + int(s2) * 1000
-                + int(cs2)
-            )
+            end_ms = int(h2) * 3600_000 + int(m2) * 60_000 + int(s2) * 1000 + int(cs2)
             last_end_ms = max(last_end_ms, end_ms)
 
     text = " ".join(text_parts).strip()
@@ -229,10 +226,7 @@ def _parse_stderr_transcript(stderr: str) -> tuple[str, int]:
 def run_whisper_cpp(audio: bytes, mime: str, use_vad: bool = False) -> tuple[str, str, int]:
     cli = _resolve_cli()
     if cli is None:
-        raise RuntimeError(
-            "whisper-cli binary not found. Set GLC_WHISPER_CLI or add "
-            "whisper-cli to PATH."
-        )
+        raise RuntimeError("whisper-cli binary not found. Set GLC_WHISPER_CLI or add whisper-cli to PATH.")
     model_file = _resolve_model()
     if model_file is None:
         model_dir = os.getenv("GLC_WHISPER_MODEL_DIR") or os.getenv("WHISPER_MODEL", "base")
@@ -262,16 +256,16 @@ def run_whisper_cpp(audio: bytes, mime: str, use_vad: bool = False) -> tuple[str
     # take this long on Apple Silicon.
     try:
         out = subprocess.run(
-            cmd, capture_output=True, text=True, check=True, timeout=TIMEOUT_SECONDS,
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as e:
-        raise RuntimeError(
-            f"whisper-cli timed out after {TIMEOUT_SECONDS}s"
-        ) from e
+        raise RuntimeError(f"whisper-cli timed out after {TIMEOUT_SECONDS}s") from e
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
-            f"whisper-cli failed (exit={e.returncode}): {e.stderr.strip()}"
-        ) from e
+        raise RuntimeError(f"whisper-cli failed (exit={e.returncode}): {e.stderr.strip()}") from e
     finally:
         audio_path.unlink(missing_ok=True)
 
