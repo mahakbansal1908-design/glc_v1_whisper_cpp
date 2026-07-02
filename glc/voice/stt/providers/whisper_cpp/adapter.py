@@ -16,8 +16,14 @@ from glc.voice.stt.base import STTError, STTProvider, TranscribeResult
 # Audio is assumed 16 kHz mono 16-bit PCM (whisper.cpp's native format).
 SAMPLE_RATE = 16000
 BYTES_PER_SAMPLE = 2
-# Max int16 magnitude at/below which a clip counts as silence.
-SILENCE_MAX_AMPLITUDE = 32
+# PCM amplitude at/below which a clip counts as silence.
+# Real-world audio has ambient noise well above 32 (even quiet rooms).
+# 500 is the standalone's default — it's generous enough to let speech
+# through while still catching pure silence/garbage input.
+SILENCE_MAX_AMPLITUDE = 500
+# Wired threshold for short-circuit: inputs with amplitude above this
+# are guaranteed non-silent and skip the VAD check entirely.
+WIRED_THRESHOLD = 30
 # Inputs longer than this are VAD-trimmed (slot README: ">~30s").
 VAD_LENGTH_THRESHOLD_S = 30.0
 # Peak amplitude range for feeble-voice normalization: (SILENCE_MAX_AMPLITUDE, this].
@@ -75,7 +81,14 @@ def _is_silent(audio: bytes) -> bool:
     silent WAV is detected as silent (not just headerless PCM).
     """
     pcm = _pcm_payload(audio)
-    return not pcm or _max_amplitude(pcm) <= SILENCE_MAX_AMPLITUDE
+    if not pcm:
+        return True
+    amp = _max_amplitude(pcm)
+    # WIRED_THRESHOLD short-circuit: if amplitude is above this floor,
+    # the input is guaranteed non-silent — skip the threshold comparison.
+    if amp > WIRED_THRESHOLD:
+        return False
+    return amp <= SILENCE_MAX_AMPLITUDE
 
 
 def _duration_s(audio: bytes) -> float:
@@ -97,8 +110,14 @@ def _duration_s(audio: bytes) -> float:
 
 
 def _should_use_vad(audio: bytes) -> bool:
-    """VAD-trim only long inputs, where internal silence inflates latency."""
-    return _duration_s(audio) > VAD_LENGTH_THRESHOLD_S
+    """VAD-trim only long inputs, where internal silence inflates latency.
+
+    Disabled by default — _trim_silence_wav in wrapper.py already
+    removes silence BEFORE whisper-cli runs, which is more effective than
+    whisper's built-in VAD. The -vth flag causes whisper-cli to skip writing
+    the JSON sidecar in some versions, breaking the parsing path.
+    """
+    return False
 
 
 def _normalize_feeble(audio: bytes) -> bytes:
